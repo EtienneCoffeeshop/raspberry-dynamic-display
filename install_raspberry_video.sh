@@ -1,50 +1,52 @@
 #!/bin/bash
 
-echo "🔄 Mise à jour du système..."
+echo "📢 Démarrage de l'installation automatique..."
+
+# ✅ Mise à jour du système
 sudo apt update && sudo apt upgrade -y
 
-echo "🔧 Installation des dépendances nécessaires..."
+# ✅ Installation de VLC et des outils pour la gestion de la TV
 sudo apt install -y vlc cec-utils wget
 
-echo "🌐 Vérification de la connexion Internet..."
-if ping -c 3 google.com > /dev/null; then
-    echo "✅ Connexion Internet établie. Téléchargement de la vidéo..."
-    wget -O /home/pi/video.mp4 "https://www.etienne-coffeeshop.com/wp-content/uploads/2025/02/video.mp4"
-else
-    echo "❌ Pas de connexion Internet. Impossible de télécharger la vidéo."
-    echo "⚠️ Assurez-vous que le Raspberry Pi est connecté au Wi-Fi, puis relancez le script."
-    exit 1
-fi
+# ✅ Configuration du script de lecture en boucle
+echo '#!/bin/bash' > /home/pi/start_video.sh
+echo 'while true; do' >> /home/pi/start_video.sh
+echo '    cvlc --fullscreen --loop --no-video-title /home/pi/video.mp4' >> /home/pi/start_video.sh
+echo 'done' >> /home/pi/start_video.sh
+chmod +x /home/pi/start_video.sh
+(crontab -l ; echo "@reboot /home/pi/start_video.sh &") | crontab -
 
-echo "🛠 Configuration du service pour la lecture en boucle..."
-cat <<EOF | sudo tee /etc/systemd/system/video-loop.service
-[Unit]
-Description=Lecture vidéo en boucle avec VLC sur Raspberry Pi
-After=multi-user.target
+# ✅ Téléchargement initial de la vidéo
+VIDEO_URL="https://www.etienne-coffeeshop.com/wp-content/uploads/2025/02/video.mp4"
+wget -O /home/pi/video.mp4 "$VIDEO_URL"
 
-[Service]
-ExecStart=/usr/bin/cvlc --fullscreen --loop /home/pi/video.mp4
-Restart=always
-User=pi
-Group=pi
-Environment=DISPLAY=:0
+# ✅ Création du script de mise à jour de la vidéo
+echo '#!/bin/bash' > /home/pi/update_video.sh
+echo 'VIDEO_URL="https://www.etienne-coffeeshop.com/wp-content/uploads/2025/02/video.mp4"' >> /home/pi/update_video.sh
+echo 'VIDEO_PATH="/home/pi/video.mp4"' >> /home/pi/update_video.sh
+echo 'TEMP_VIDEO="/home/pi/video_temp.mp4"' >> /home/pi/update_video.sh
+echo '' >> /home/pi/update_video.sh
+echo 'wget -O "$TEMP_VIDEO" "$VIDEO_URL"' >> /home/pi/update_video.sh
+echo 'if [ $? -eq 0 ]; then' >> /home/pi/update_video.sh
+echo '    mv "$TEMP_VIDEO" "$VIDEO_PATH"' >> /home/pi/update_video.sh
+echo '    pkill vlc' >> /home/pi/update_video.sh
+echo '    cvlc --fullscreen --loop --no-video-title "$VIDEO_PATH" &' >> /home/pi/update_video.sh
+echo 'fi' >> /home/pi/update_video.sh
+chmod +x /home/pi/update_video.sh
+(crontab -l ; echo "0 6 * * * /home/pi/update_video.sh") | crontab -
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# ✅ Configuration du script de gestion de la TV
+echo '#!/bin/bash' > /home/pi/tv_control.sh
+echo 'if [ "$1" == "on" ]; then' >> /home/pi/tv_control.sh
+echo '    echo "on 0" | cec-client -s -d 1' >> /home/pi/tv_control.sh
+echo 'elif [ "$1" == "off" ]; then' >> /home/pi/tv_control.sh
+echo '    echo "standby 0" | cec-client -s -d 1' >> /home/pi/tv_control.sh
+echo 'fi' >> /home/pi/tv_control.sh
+chmod +x /home/pi/tv_control.sh
 
-echo "🚀 Activation du service vidéo..."
-sudo systemctl daemon-reload
-sudo systemctl enable video-loop.service
-sudo systemctl start video-loop.service
+# ✅ Ajout des tâches CRON pour allumer/éteindre la TV
+(crontab -l ; echo "0 6 * * * /home/pi/tv_control.sh on") | crontab -
+(crontab -l ; echo "0 21 * * * /home/pi/tv_control.sh off") | crontab -
 
-echo "🖥️ Activation de HDMI-CEC pour contrôle TV..."
-sudo apt install -y cec-utils
-
-echo "✅ Test HDMI-CEC : allumer la TV"
-echo "on 0" | cec-client -s -d 1
-
-echo "✅ Test HDMI-CEC : éteindre la TV"
-echo "standby 0" | cec-client -s -d 1
-
-echo "✅ Installation terminée !"
+echo "🎉 Installation terminée ! Redémarrage..."
+sudo reboot
