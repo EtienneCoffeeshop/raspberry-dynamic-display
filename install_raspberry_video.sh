@@ -9,7 +9,7 @@ sudo apt install -y mpv cec-utils wget
 echo "🌐 Vérification de la connexion Internet..."
 if ping -c 3 google.com > /dev/null; then
     echo "✅ Connexion Internet établie. Téléchargement de la vidéo..."
-    wget -O /home/pi/video.mp4 "https://franchise.etienne-coffeeshop.com/uploads/video.mp4"
+    wget -O /home/pi/video.mp4 "https://www.etienne-coffeeshop.com/video-rspb/video.mp4"
 else
     echo "❌ Pas de connexion Internet. Impossible de télécharger la vidéo."
     echo "⚠️ Assurez-vous que le Raspberry Pi est connecté au Wi-Fi, puis relancez le script."
