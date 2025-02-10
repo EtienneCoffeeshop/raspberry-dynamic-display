@@ -4,7 +4,7 @@ echo "🔄 Mise à jour du système..."
 sudo apt update && sudo apt upgrade -y
 
 echo "🔧 Installation des dépendances nécessaires..."
-sudo apt install -y mpv cec-utils wget
+sudo apt install -y vlc cec-utils wget
 
 echo "🌐 Vérification de la connexion Internet..."
 if ping -c 3 google.com > /dev/null; then
@@ -19,14 +19,15 @@ fi
 echo "🛠 Configuration du service pour la lecture en boucle..."
 cat <<EOF | sudo tee /etc/systemd/system/video-loop.service
 [Unit]
-Description=Lecture vidéo en boucle sur Raspberry Pi
+Description=Lecture vidéo en boucle avec VLC sur Raspberry Pi
 After=multi-user.target
 
 [Service]
-ExecStart=/usr/bin/mpv --fs --loop=inf /home/pi/video.mp4
+ExecStart=/usr/bin/cvlc --fullscreen --loop /home/pi/video.mp4
 Restart=always
 User=pi
 Group=pi
+Environment=DISPLAY=:0
 
 [Install]
 WantedBy=multi-user.target
