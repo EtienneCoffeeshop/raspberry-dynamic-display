@@ -6,11 +6,12 @@ echo "📢 Démarrage de l'installation automatique..."
 sudo apt update && sudo apt upgrade -y
 
 # ✅ Installation de VLC, des outils pour la gestion de la TV et des logs
-sudo apt install -y vlc cec-utils wget
+sudo apt install -y vlc cec-utils wget logrotate
 mkdir -p /home/pi/logs
 
 # ✅ Désactivation de la mise en veille de l’écran
 sudo bash -c 'echo "hdmi_blanking=1" >> /boot/config.txt'
+sudo bash -c 'echo "consoleblank=0" >> /boot/cmdline.txt'
 
 # ✅ Configuration par défaut du Wi-Fi
 DEFAULT_SSID="Livebox-F6F0"
@@ -25,19 +26,35 @@ if [ "\$#" -ne 2 ]; then
 fi
 NEW_SSID="\$1"
 NEW_PASSWORD="\$2"
-echo "network={" | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf
-echo "    ssid=\"\$NEW_SSID\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
-echo "    psk=\"\$NEW_PASSWORD\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
-sudo wpa_cli -i wlan0 reconfigure
-echo "📶 Wi-Fi mis à jour avec SSID: \$NEW_SSID"
+echo "⏳ Changement du réseau Wi-Fi..."
+
+sudo wpa_cli -i wlan0 remove_network 0
+sudo wpa_cli -i wlan0 add_network
+sudo wpa_cli -i wlan0 set_network 0 ssid "\"\$NEW_SSID\""
+sudo wpa_cli -i wlan0 set_network 0 psk "\"\$NEW_PASSWORD\""
+sudo wpa_cli -i wlan0 enable_network 0
+sudo wpa_cli -i wlan0 save_config
+
+sudo systemctl restart networking
+sudo systemctl restart wpa_supplicant
+
+for i in {1..10}; do
+    if ping -c 1 -W 1 8.8.8.8; then
+        echo "✅ Connexion réussie !"
+        break
+    fi
+    echo "⏳ Tentative de connexion au Wi-Fi (\$i/10)..."
+    sleep 5
+done
 EOF
 chmod +x /home/pi/change_wifi.sh
 
 # ✅ Configuration initiale du Wi-Fi
-echo "network={" | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf
-echo "    ssid=\"$DEFAULT_SSID\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
-echo "    psk=\"$DEFAULT_PASSWORD\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf
-sudo wpa_cli -i wlan0 reconfigure
+echo "network={" | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
+echo "    ssid=\"$DEFAULT_SSID\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
+echo "    psk=\"$DEFAULT_PASSWORD\"" | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
+sudo systemctl restart networking
+sudo systemctl restart wpa_supplicant
 
 echo "📶 Wi-Fi configuré avec SSID: $DEFAULT_SSID"
 
@@ -52,13 +69,14 @@ fi
 # ✅ Configuration du script de lecture en boucle
 cat <<EOF > /home/pi/start_video.sh
 #!/bin/bash
+sleep 10
 while true; do
     cvlc --fullscreen --loop --no-video-title --no-xlib /home/pi/video.mp4
     sleep 2  # Ajout d'un délai pour éviter une surcharge CPU
 done
 EOF
 chmod +x /home/pi/start_video.sh
-(crontab -l ; echo "@reboot /home/pi/start_video.sh &") | crontab -
+(crontab -l ; echo "@reboot sleep 10 && /home/pi/start_video.sh &") | crontab -
 
 # ✅ Téléchargement initial de la vidéo avec vérification du Wi-Fi
 VIDEO_URL="https://www.etienne-coffeeshop.com/wp-content/uploads/2025/02/video.mp4"
@@ -69,6 +87,15 @@ while ! ping -c 1 -W 1 8.8.8.8; do
 done
 wget -O "$VIDEO_PATH" "$VIDEO_URL"
 
+# ✅ Configuration de la rotation des logs
+echo "/home/pi/logs/*.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+}" | sudo tee /etc/logrotate.d/raspberry_logs > /dev/null
+
 # ✅ Création du script de mise à jour de la vidéo
 cat <<EOF > /home/pi/update_video.sh
 #!/bin/bash
@@ -77,11 +104,15 @@ VIDEO_PATH="$VIDEO_PATH"
 TEMP_VIDEO="/home/pi/video_temp.mp4"
 echo "\$(date) - Début de la mise à jour de la vidéo." >> /home/pi/logs/update_video.log
 if wget -O "\$TEMP_VIDEO" "\$VIDEO_URL"; then
-    mv "\$TEMP_VIDEO" "\$VIDEO_PATH"
-    pkill vlc
-    sleep 2  # Ajout d'un délai avant redémarrage
-    cvlc --fullscreen --loop --no-video-title --no-xlib "\$VIDEO_PATH" &
-    echo "\$(date) - Vidéo mise à jour et relancée." >> /home/pi/logs/update_video.log
+    if [ -s "\$TEMP_VIDEO" ]; then
+        mv "\$TEMP_VIDEO" "\$VIDEO_PATH"
+        pkill vlc
+        sleep 2  # Ajout d'un délai avant redémarrage
+        cvlc --fullscreen --loop --no-video-title --no-xlib "\$VIDEO_PATH" &
+        echo "\$(date) - Vidéo mise à jour et relancée." >> /home/pi/logs/update_video.log
+    else
+        echo "\$(date) - ⚠️ Le fichier vidéo est vide, annulation de la mise à jour." >> /home/pi/logs/update_video.log
+    fi
 else
     echo "\$(date) - ⚠️ Erreur lors du téléchargement de la vidéo." >> /home/pi/logs/update_video.log
 fi
