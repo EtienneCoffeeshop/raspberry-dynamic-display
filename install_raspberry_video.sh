@@ -7,7 +7,7 @@ echo "🔧 Installation des dépendances..."
 sudo apt install -y mpv cec-utils wget
 
 echo "📥 Téléchargement de la vidéo..."
-wget -O /home/pi/video.mp4 "https://drive.google.com/your-video-file"
+wget -O /home/pi/video.mp4 "https://franchise.etienne-coffeeshop.com/uploads/video.mp4"
 
 echo "🛠 Configuration du service pour la lecture en boucle..."
 cat <<EOF | sudo tee /etc/systemd/system/video-loop.service
